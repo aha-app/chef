@@ -52,6 +52,15 @@ class Chef
         options '--no-install-recommends'
       end
       ```
+
+      **If a package has pattern like name, prevent installation of other apt packages which substring-matches the package's name**:
+
+      ```ruby
+      apt_package 'lua5.3' do
+        version '5.3.3-1.1ubuntu2'
+        anchor_package_name_patterns false
+      end
+      ```
       DOC
 
       description "Use the **apt_package** resource to manage packages on Debian, Ubuntu, and other platforms that use the APT package system."
@@ -75,6 +84,9 @@ class Chef
         description: "A Hash of response file variables in the form of {'VARIABLE' => 'VALUE'}.",
         default: {}, desired_state: false
 
+      property :anchor_package_name_patterns, [TrueClass, FalseClass],
+        description: "A Boolean flag to decide whether packages which have pattern like names should be regex matched.",
+        default: true
     end
   end
 end
