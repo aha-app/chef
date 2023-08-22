@@ -1,0 +1,59 @@
+# This Dockerfile will build a Chef infra deb package.
+# Use `docker build . --file Dockerfile.aha --tag chef` to build it and then run
+# `docker run --rm --entrypoint cat chef /root/chef/chef.deb > chef.deb` to copy out the built binary.
+
+FROM ruby:3.1.3-slim AS base
+
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install --yes \
+  autoconf \
+  awscli \
+  bison \
+  build-essential \
+  git \
+  m4
+
+ENV BUNDLE_SILENCE_ROOT_WARNING=1
+RUN bundle config set --local without 'development'
+
+WORKDIR /root
+
+# -----------------------------------------------------------------------------
+FROM base AS omnibus-toolchain
+
+RUN git clone https://github.com/aha-app/omnibus-toolchain.git
+WORKDIR /root/omnibus-toolchain
+RUN git checkout tags/3.0.17
+RUN bundle install
+RUN FORCE_UNSAFE_CONFIGURE=1 bundle exec omnibus build omnibus-toolchain
+RUN mv pkg/omnibus-toolchain_*.deb pkg/omnibus-toolchain.deb
+
+# -----------------------------------------------------------------------------
+FROM base AS chef-foundation
+
+COPY --from=omnibus-toolchain /root/omnibus-toolchain/pkg/omnibus-toolchain.deb .
+RUN dpkg --install omnibus-toolchain.deb
+
+RUN git clone https://github.com/aha-app/chef-foundation.git
+WORKDIR /root/chef-foundation
+RUN git checkout tags/3.1.6
+RUN bundle install
+
+# This patch can be removed when https://bugs.ruby-lang.org/issues/19238 is fixed or Chef fixes the issue in their Omnibus gem
+COPY omnibus.patch .
+RUN patch < omnibus.patch /usr/local/bundle/bundler/gems/omnibus-*/lib/omnibus/download_helpers.rb
+
+RUN bundle exec omnibus build chef-foundation
+RUN mv pkg/chef-foundation_*.deb pkg/chef-foundation.deb
+
+# -----------------------------------------------------------------------------
+FROM base AS chef-infra
+
+COPY --from=chef-foundation /root/chef-foundation/pkg/chef-foundation.deb .
+RUN dpkg --install chef-foundation.deb
+
+COPY . /root/chef
+
+WORKDIR /root/chef/omnibus
+RUN bundle install
+RUN bundle exec omnibus build chef
+RUN cp pkg/chef_*.deb /root/chef/chef.deb

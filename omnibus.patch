@@ -1,0 +1,4 @@
+83c83
+<           file = URI.open(from_url, options)
+---
+>           file = URI.open(from_url)
